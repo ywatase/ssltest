@@ -104,9 +104,8 @@ _ssltest () {
 	if [ $CENTOS_VERSION ] ; then
 		if [ $NO_DOCKER = 1 ] ; then
 			if [ "$LATEST" = 1 ] ; then
-				for Ver in $(yum provides --disablerepo='*' --enablerepo=updates openssl \
-					| grep '^openssl-'  | grep -vF "$(rpm -q openssl)" \
-					| cut -d' ' -f1 | sed -e 's/\.i[36]86//' -e 's/\.x86_64//' | sort | uniq)
+				for Ver in $(repoquery --whatprovides '/usr/bin/openssl' --qf '%{name}-%{version}-%{release}' \
+					| grep -vF "$(rpm -q openssl)" | sort | uniq)
 				do
 					INSTALL_PKGS=$Ver _raw_test $URL && break
 				done
@@ -119,6 +118,7 @@ _ssltest () {
 		return
 	fi
 
+	_search_centos_version $URL 4 9 4
 	_search_centos_version $URL 5 11 2
 	_search_centos_version $URL 6 8 1
 }

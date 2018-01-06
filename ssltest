@@ -136,7 +136,7 @@ _search_centos_version () {
 			_docker_test $URL $Ver && break
 		done
 	else
-		LATEST=1 _docker_test $URL 5.11
+		LATEST=1 _docker_test $URL $major.$minor_max
 	fi
 
 }

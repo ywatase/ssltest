@@ -1,25 +1,31 @@
 #!/bin/bash
 SCRIPT_DIR=$(cd $(dirname $0);pwd -P)
 SCRIPT_PATH=$SCRIPT_DIR/$(basename $0)
-TEST_CMD="curl -fs -o /dev/null"
+TEST_CMD="curl -s -o /dev/null"
+TEST_CENTOS4=0
+TEST_CENTOS5=1
+TEST_CENTOS6=1
 : ${DOCKER_PULL:=0}
 : ${VERBOSE:=0}
 : ${NO_DOCKER:=0}
 
 usage () {
 	/bin/cat <<END
-usage: `basename $0` [-pcV]
+usage: `basename $0` [-pcV4] URL
   V         : verbose mode
   p         : pull docker images
   c version : centos version
+  4         : test centos4
 END
 	exit 0
 }
 
 ssltest () {
-  while getopts 'Dpv:V' opt
+  while getopts '4Dpv:V' opt
   do
     case $opt in
+      4) TEST_CENTOS4=1
+        ;;
       V) VERBOSE=1
         ;;
       p) DOCKER_PULL=1
@@ -118,9 +124,9 @@ _ssltest () {
 		return
 	fi
 
-	_search_centos_version $URL 4 9 4
-	_search_centos_version $URL 5 11 2
-	_search_centos_version $URL 6 8 1
+	[ $TEST_CENTOS4 = 1 ] && _search_centos_version $URL 4 9 4
+	[ $TEST_CENTOS5 = 1 ] && _search_centos_version $URL 5 11 2
+	[ $TEST_CENTOS6 = 1 ] && _search_centos_version $URL 6 8 1
 }
 
 _search_centos_version () {

@@ -228,12 +228,3 @@ END
 }
 
 ssltest "$@"
-
-#for Ver in 6.{1..8}
-#do
-#	echo centos:$Ver
-#	docker run --rm ywatase/centos:$Ver curl -fsS $1 -o /dev/null || echo NG
-#	docker run --rm ywatase/centos:$Ver rpm -q openssl
-#	docker run --rm ywatase/centos:$Ver rpm -q ca-certificates
-#done
-

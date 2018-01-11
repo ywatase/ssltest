@@ -5,28 +5,32 @@ TEST_CMD="curl -s -o /dev/null"
 TEST_CENTOS4=0
 TEST_CENTOS5=1
 TEST_CENTOS6=1
-UPGRADE_CA_CERTIFICATES=0
 CACHE_TIME_MINUTE=1440
+OPENSSL_FILE=/usr/bin/openssl
+CA_CERTIFICATES_FILE=/etc/pki/tls/certs/ca-bundle.crt
 
 : ${DOCKER_PULL:=0}
 : ${VERBOSE:=0}
 : ${NO_DOCKER:=0}
+: ${UPGRADE_CA_CERTIFICATES:=0}
+: ${UPGRADE_OPENSSL:=0}
 : ${CACHE_DIR:=$SCRIPT_DIR/cache}
 
 usage () {
 	/bin/cat <<END
-usage: `basename $0` [-cCpv4] URL
+usage: `basename $0` [-cCOpv4] URL
   v         : verbose mode
   p         : pull docker images
   c version : centos version (cf. 5.11, 6.7, ...)
-  C         : use with c option. upgrade ca-certificates
+  C         : use with c option. upgrade ca-certificates. if use with -O, ignore C option
+  O         : use with c option. upgrade openssl. if this use with -C, ignore C option
   4         : test centos4
 END
 	exit 0
 }
 
 ssltest () {
-  while getopts '4Dpv:V' opt
+  while getopts '4Cc:Opv?' opt
   do
     case $opt in
       4) TEST_CENTOS4=1
@@ -38,6 +42,8 @@ ssltest () {
       c) CENTOS_VERSION=$OPTARG
         ;;
       C) UPGRADE_CA_CERTIFICATES=1
+        ;;
+      O) UPGRADE_OPENSSL=1
         ;;
       \?) usage
 		;;
@@ -87,6 +93,8 @@ _docker_test () {
 		-e NO_DOCKER=1 \
 		-e VERBOSE=$VERBOSE \
 		-e DOCKER_PULL=$DOCKER_PULL \
+		-e UPGRADE_OPENSSL=$UPGRADE_OPENSSL \
+		-e UPGRADE_CA_CERTIFICATES=$UPGRADE_CA_CERTIFICATES \
 		-e LATEST=$LATEST \
 		-e CACHE_DIR=/root/cache \
 		-v $SCRIPT_PATH:/root/$(basename $SCRIPT_PATH) \
@@ -98,37 +106,38 @@ _raw_test () {
 	local URL=$1
 	local _TEST_CMD="$TEST_CMD $URL"
 	if [ -n "$INSTALL_PKGS" ] ; then
-		arch=$(rpm -q centos-release --queryformat "%{ARCH}")
-		if [ -e $CACHE_DIR/"$INSTALL_PKGS".$arch.rpm ] ; then
-			rpm -U $CACHE_DIR/"$INSTALL_PKGS".$arch.rpm 2>/dev/null
-		elif curl -sfqLO http://vault.centos.org/$CENTOS_VERSION/updates/$arch/Packages/"$INSTALL_PKGS".$arch.rpm \
-			|| curl -sfqLO http://vault.centos.org/$CENTOS_VERSION/updates/$arch/RPMS/"$INSTALL_PKGS".$arch.rpm ; then
-		    rpm -U $INSTALL_PKGS.$arch.rpm 2>/dev/null
-		    mv $INSTALL_PKGS.$arch.rpm $CACHE_DIR
+		arch=$(rpm -q centos-release --qf "%{arch}")
+		if [ -e $CACHE_DIR/"$INSTALL_PKGS".rpm ] ; then
+			rpm -U $CACHE_DIR/"$INSTALL_PKGS".rpm 2>/dev/null
+		elif curl -sfqLO http://vault.centos.org/$CENTOS_VERSION/updates/$arch/Packages/"$INSTALL_PKGS".rpm \
+			|| curl -sfqLO http://vault.centos.org/$CENTOS_VERSION/updates/$arch/RPMS/"$INSTALL_PKGS".rpm  ; then
+		    rpm -U ${INSTALL_PKGS}.rpm 2>/dev/null
+		    mv ${INSTALL_PKGS}.rpm $CACHE_DIR
 		else
 			yum install -y -q $INSTALL_PKGS
 		fi
 	fi
-	pp $CENTOS_VERSION "$(rpm -q openssl | head -n 1)" "$_TEST_CMD"
+	pp $CENTOS_VERSION "$(rpm -qf $OPENSSL_FILE | head -n 1) / $(rpm -qf $CA_CERTIFICATES_FILE | head -n 1)" "$_TEST_CMD"
 	return
 }
 
 provided () {
-	local pkg=$1
-	local file=${2:-$1}
+	local file=$1
+	local pkg=$(rpm -qf $file --qf='%{name}-%{version}-%{release}')
+	local arch=$(rpm -qf $file --qf '%{arch}')
 	repoquery --whatprovides "$file" --qf '%{name}-%{version}-%{release}' \
-		| grep -vF "$(rpm -q $pkg)" | sort | uniq
+		| grep -vxF "$pkg" | sort | uniq | sed -e "s/$/.$arch/"
 }
 
 cached_provided () {
-	local pkg=$1
-	local file=${2:-$1}
+	local file=$1
+	local pkg=$(rpm -qf $file --qf '%{name}')
 	local provided_cache_file=$CACHE_DIR/provided_p_${pkg}_v${CENTOS_VERSION}.cache
 	touch -t `date --date "$CACHE_TIME_MINUTE  minutes ago" +%Y%m%d%H%M.%S` $CACHE_DIR/timestamp
 	if [ -n $provided_cache_file -a $provided_cache_file -nt $CACHE_DIR/timestamp ] ; then
 		cat $provided_cache_file
 	else
-		provided $pkg $file | tee $provided_cache_file
+		provided $file | tee $provided_cache_file
 	fi
 }
 
@@ -136,8 +145,13 @@ _ssltest () {
 	local URL=$1
 	if [ $CENTOS_VERSION ] ; then
 		if [ $NO_DOCKER = 1 ] ; then
-			if [ "$LATEST" = 1 ] ; then
-				cached_provided openssl /usr/bin/openssl | while read Ver
+			if [ "$LATEST" = 1 -o "$UPGRADE_OPENSSL" = 1 ] ; then
+				cached_provided $OPENSSL_FILE | while read Ver
+				do
+					INSTALL_PKGS=$Ver _raw_test $URL && break
+				done
+			elif [ "$UPGRADE_CA_CERTIFICATES" = 1 ] ; then
+				cached_provided $CA_CERTIFICATES_FILE | while read Ver
 				do
 					INSTALL_PKGS=$Ver _raw_test $URL && break
 				done

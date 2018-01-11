@@ -28,6 +28,8 @@ usage: `basename $0` [-CcOpv456] URL
   4         : test centos4
   5         : test centos5
   6         : test centos6
+
+See https://github.com/ywatase/ssltest
 END
 	exit 0
 }

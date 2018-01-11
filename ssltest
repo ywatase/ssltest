@@ -8,6 +8,7 @@ TEST_CENTOS6=0
 CACHE_TIME_MINUTE=1440
 OPENSSL_FILE=/usr/bin/openssl
 CA_CERTIFICATES_FILE=/etc/pki/tls/certs/ca-bundle.crt
+QF='%{name}-%{version}-%{release}'
 
 : ${DOCKER_PULL:=0}
 : ${VERBOSE:=0}
@@ -90,9 +91,10 @@ ssltest () {
 
 pp () {
 	local centos=$1
-	local pkgs="$2"
-	local test_cmd="$3"
-	local fmt=$(printf 'centos:%-4s / %-32s : %s' $centos "$pkgs" '%s\n')
+	local sslpkgs="$2"
+	local crtpkgs="$3"
+	local test_cmd="$4"
+	local fmt=$(printf 'centos:%-4s / %-26s / %-37s : %s' $centos "$sslpkgs" "$crtpkgs" '%s\n')
 	$test_cmd
 	RET=$?
 	[ "$RET" = 0 ] \
@@ -145,15 +147,18 @@ _raw_test () {
 			yum install -y -q $INSTALL_PKGS
 		fi
 	fi
-	pp $CENTOS_VERSION "$(rpm -qf $OPENSSL_FILE | head -n 1) / $(rpm -qf $CA_CERTIFICATES_FILE | head -n 1)" "$_TEST_CMD"
+	pp $CENTOS_VERSION \
+		"$(rpm -qf $OPENSSL_FILE --qf=$QF | head -n 1)" \
+		"$(rpm -qf $CA_CERTIFICATES_FILE --qf=$QF | head -n 1)" \
+		"$_TEST_CMD"
 	return
 }
 
 provided () {
 	local file=$1
-	local pkg=$(rpm -qf $file --qf='%{name}-%{version}-%{release}')
+	local pkg=$(rpm -qf $file --qf=$QF)
 	local arch=$(rpm -qf $file --qf '%{arch}')
-	repoquery --whatprovides "$file" --qf '%{name}-%{version}-%{release}' \
+	repoquery --whatprovides "$file" --qf $QF \
 		| grep -vxF "$pkg" | sort | uniq | sed -e "s/$/.$arch/"
 }
 

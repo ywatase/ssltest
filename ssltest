@@ -5,16 +5,21 @@ TEST_CMD="curl -s -o /dev/null"
 TEST_CENTOS4=0
 TEST_CENTOS5=1
 TEST_CENTOS6=1
+UPGRADE_CA_CERTIFICATES=0
+CACHE_TIME_MINUTE=1440
+
 : ${DOCKER_PULL:=0}
 : ${VERBOSE:=0}
 : ${NO_DOCKER:=0}
+: ${CACHE_DIR:=$SCRIPT_DIR/cache}
 
 usage () {
 	/bin/cat <<END
-usage: `basename $0` [-pcV4] URL
-  V         : verbose mode
+usage: `basename $0` [-cCpv4] URL
+  v         : verbose mode
   p         : pull docker images
-  c version : centos version
+  c version : centos version (cf. 5.11, 6.7, ...)
+  C         : use with c option. upgrade ca-certificates
   4         : test centos4
 END
 	exit 0
@@ -26,11 +31,13 @@ ssltest () {
     case $opt in
       4) TEST_CENTOS4=1
         ;;
-      V) VERBOSE=1
+      v) VERBOSE=1
         ;;
       p) DOCKER_PULL=1
         ;;
-      v) CENTOS_VERSION=$OPTARG
+      c) CENTOS_VERSION=$OPTARG
+        ;;
+      C) UPGRADE_CA_CERTIFICATES=1
         ;;
       \?) usage
 		;;
@@ -73,7 +80,7 @@ _docker_test () {
 	if [ $DOCKER_PULL = 1 ] ; then
 		docker pull ywatase/centos:$Ver > /dev/null 2>&1
 	fi
-	[ -d $SCRIPT_DIR/rpms ] || mkdir $SCRIPT_DIR/rpms
+	[ -d $CACHE_DIR ] || mkdir $CACHE_DIR
 	docker run --rm -t \
 		-e CENTOS_VERSION=$Ver \
 		-e INSTALL_PKGS=$INSTALL_PKGS \
@@ -81,8 +88,9 @@ _docker_test () {
 		-e VERBOSE=$VERBOSE \
 		-e DOCKER_PULL=$DOCKER_PULL \
 		-e LATEST=$LATEST \
+		-e CACHE_DIR=/root/cache \
 		-v $SCRIPT_PATH:/root/$(basename $SCRIPT_PATH) \
-		-v $SCRIPT_DIR/rpms:/root/rpms \
+		-v $SCRIPT_DIR/cache:/root/cache\
 		ywatase/centos:$Ver /bin/bash /root/$(basename $SCRIPT_PATH) $URL
 }
 
@@ -91,12 +99,12 @@ _raw_test () {
 	local _TEST_CMD="$TEST_CMD $URL"
 	if [ -n "$INSTALL_PKGS" ] ; then
 		arch=$(rpm -q centos-release --queryformat "%{ARCH}")
-		if [ -e /root/rpms/"$INSTALL_PKGS".$arch.rpm ] ; then
-			rpm -U /root/rpms/"$INSTALL_PKGS".$arch.rpm 2>/dev/null
+		if [ -e $CACHE_DIR/"$INSTALL_PKGS".$arch.rpm ] ; then
+			rpm -U $CACHE_DIR/"$INSTALL_PKGS".$arch.rpm 2>/dev/null
 		elif curl -sfqLO http://vault.centos.org/$CENTOS_VERSION/updates/$arch/Packages/"$INSTALL_PKGS".$arch.rpm \
 			|| curl -sfqLO http://vault.centos.org/$CENTOS_VERSION/updates/$arch/RPMS/"$INSTALL_PKGS".$arch.rpm ; then
 		    rpm -U $INSTALL_PKGS.$arch.rpm 2>/dev/null
-		    mv $INSTALL_PKGS.$arch.rpm /root/rpms
+		    mv $INSTALL_PKGS.$arch.rpm $CACHE_DIR
 		else
 			yum install -y -q $INSTALL_PKGS
 		fi
@@ -105,13 +113,31 @@ _raw_test () {
 	return
 }
 
+provided () {
+	local pkg=$1
+	local file=${2:-$1}
+	repoquery --whatprovides "$file" --qf '%{name}-%{version}-%{release}' \
+		| grep -vF "$(rpm -q $pkg)" | sort | uniq
+}
+
+cached_provided () {
+	local pkg=$1
+	local file=${2:-$1}
+	local provided_cache_file=$CACHE_DIR/provided_p_${pkg}_v${CENTOS_VERSION}.cache
+	touch -t `date --date "$CACHE_TIME_MINUTE  minutes ago" +%Y%m%d%H%M.%S` $CACHE_DIR/timestamp
+	if [ -n $provided_cache_file -a $provided_cache_file -nt $CACHE_DIR/timestamp ] ; then
+		cat $provided_cache_file
+	else
+		provided $pkg $file | tee $provided_cache_file
+	fi
+}
+
 _ssltest () {
 	local URL=$1
 	if [ $CENTOS_VERSION ] ; then
 		if [ $NO_DOCKER = 1 ] ; then
 			if [ "$LATEST" = 1 ] ; then
-				for Ver in $(repoquery --whatprovides '/usr/bin/openssl' --qf '%{name}-%{version}-%{release}' \
-					| grep -vF "$(rpm -q openssl)" | sort | uniq)
+				cached_provided openssl /usr/bin/openssl | while read Ver
 				do
 					INSTALL_PKGS=$Ver _raw_test $URL && break
 				done

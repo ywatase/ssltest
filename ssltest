@@ -3,8 +3,8 @@ SCRIPT_DIR=$(cd $(dirname $0);pwd -P)
 SCRIPT_PATH=$SCRIPT_DIR/$(basename $0)
 TEST_CMD="curl -s -o /dev/null"
 TEST_CENTOS4=0
-TEST_CENTOS5=1
-TEST_CENTOS6=1
+TEST_CENTOS5=0
+TEST_CENTOS6=0
 CACHE_TIME_MINUTE=1440
 OPENSSL_FILE=/usr/bin/openssl
 CA_CERTIFICATES_FILE=/etc/pki/tls/certs/ca-bundle.crt
@@ -16,24 +16,31 @@ CA_CERTIFICATES_FILE=/etc/pki/tls/certs/ca-bundle.crt
 : ${UPGRADE_OPENSSL:=0}
 : ${CACHE_DIR:=$SCRIPT_DIR/cache}
 
+
 usage () {
 	/bin/cat <<END
-usage: `basename $0` [-cCOpv4] URL
+usage: `basename $0` [-CcOpv456] URL
   v         : verbose mode
   p         : pull docker images
   c version : centos version (cf. 5.11, 6.7, ...)
-  C         : use with c option. upgrade ca-certificates. if use with -O, ignore C option
-  O         : use with c option. upgrade openssl. if this use with -C, ignore C option
+  C         : use with c option. upgrade ca-certificates. it can't use with -O.
+  O         : use with c option. upgrade openssl. it can't use with -C.
   4         : test centos4
+  5         : test centos5
+  6         : test centos6
 END
 	exit 0
 }
 
 ssltest () {
-  while getopts '4Cc:Opv?' opt
+  while getopts '456Cc:Opv?' opt
   do
     case $opt in
       4) TEST_CENTOS4=1
+        ;;
+      5) TEST_CENTOS5=1
+        ;;
+      6) TEST_CENTOS6=1
         ;;
       v) VERBOSE=1
         ;;
@@ -52,6 +59,19 @@ ssltest () {
     esac
   done
   shift `expr $OPTIND - 1`
+  if [ `expr 0 + $TEST_CENTOS4 + $TEST_CENTOS5 + $TEST_CENTOS6` = 0 ] ; then
+	  TEST_CENTOS5=1
+	  TEST_CENTOS6=1
+  fi
+  if [ -z $CENTOS_VERSION ] && [ $UPGRADE_CA_CERTIFICATES = 1 -o $UPGRADE_OPENSSL = 1 ] ; then
+	  echo -C or -O option was set without -c or env:CENTOS_VERSION.
+	  exit 1
+  fi
+  if [ $UPGRADE_CA_CERTIFICATES = 1 -a $UPGRADE_OPENSSL = 1 ] ; then
+	  echo -C and -O options are set. >&2
+	  exit 2
+  fi
+
 
   for url in "$@"
   do

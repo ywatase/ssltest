@@ -30,6 +30,12 @@ usage: `basename $0` [-CcOpv456] URL
   6         : test centos6
 
 See https://github.com/ywatase/ssltest
+cf)
+# test only CentOS 5
+`basename $0` -5 https://example.com/
+# update ca-certificates at CentOS 6.8
+`basename $0` -Cc 6.8 https://example.com/
+
 END
 	exit 0
 }

@@ -5,8 +5,10 @@ TEST_CMD="curl -s -o /dev/null"
 TEST_CENTOS4=0
 TEST_CENTOS5=0
 TEST_CENTOS6=0
+TEST_CENTOS7=0
 CACHE_TIME_MINUTE=1440
 OPENSSL_FILE=/usr/bin/openssl
+NSS_FILE=/etc/pki/nssdb
 CA_CERTIFICATES_FILE=/etc/pki/tls/certs/ca-bundle.crt
 QF='%{name}-%{version}-%{release}'
 
@@ -20,15 +22,16 @@ QF='%{name}-%{version}-%{release}'
 
 usage () {
 	/bin/cat <<END
-usage: `basename $0` [-CcOpv456] URL
+usage: `basename $0` [-CcOpv4567] URL
   v         : verbose mode
   p         : pull docker images
-  c version : centos version (cf. 5.11, 6.7, ...)
+  c version : centos version (cf. 5.11, 6.7, 7.3, ...)
   C         : use with c option. upgrade ca-certificates. it can't use with -O.
   O         : use with c option. upgrade openssl. it can't use with -C.
   4         : test centos4
   5         : test centos5
   6         : test centos6
+  7         : test centos7
 
 See https://github.com/ywatase/ssltest
 cf)
@@ -42,7 +45,7 @@ END
 }
 
 ssltest () {
-  while getopts '456Cc:Opv?' opt
+  while getopts '4567Cc:Opv?' opt
   do
     case $opt in
       4) TEST_CENTOS4=1
@@ -50,6 +53,8 @@ ssltest () {
       5) TEST_CENTOS5=1
         ;;
       6) TEST_CENTOS6=1
+        ;;
+      7) TEST_CENTOS7=1
         ;;
       v) VERBOSE=1
         ;;
@@ -68,7 +73,7 @@ ssltest () {
     esac
   done
   shift `expr $OPTIND - 1`
-  if [ `expr 0 + $TEST_CENTOS4 + $TEST_CENTOS5 + $TEST_CENTOS6` = 0 ] ; then
+  if [ `expr 0 + $TEST_CENTOS4 + $TEST_CENTOS5 + $TEST_CENTOS6 + $TEST_CENTOS7` = 0 ] ; then
 	  TEST_CENTOS5=1
 	  TEST_CENTOS6=1
   fi
@@ -148,7 +153,7 @@ _raw_test () {
 		fi
 	fi
 	pp $CENTOS_VERSION \
-		"$(rpm -qf $OPENSSL_FILE --qf=$QF | head -n 1)" \
+		"$(rpm -qf $(curl_ssl_library_file) --qf=$QF | head -n 1)" \
 		"$(rpm -qf $CA_CERTIFICATES_FILE --qf=$QF | head -n 1)" \
 		"$_TEST_CMD"
 	return
@@ -174,12 +179,23 @@ cached_provided () {
 	fi
 }
 
+curl_ssl_library_file () {
+	local pkg=$(curl -V | grep -oiE '(nss|openssl)' | tr A-Z a-z)
+	if [ "$pkg" = nss ] ; then
+		echo $NSS_FILE
+	elif [ "$pkg" = openssl ] ; then
+		echo $OPENSSL_FILE
+	else
+		echo
+	fi
+}
+
 _ssltest () {
 	local URL=$1
 	if [ $CENTOS_VERSION ] ; then
 		if [ $NO_DOCKER = 1 ] ; then
 			if [ "$LATEST" = 1 -o "$UPGRADE_OPENSSL" = 1 ] ; then
-				cached_provided $OPENSSL_FILE | while read Ver
+				cached_provided $(curl_ssl_library_file) | while read Ver
 				do
 					INSTALL_PKGS=$Ver _raw_test $URL && break
 				done
@@ -200,6 +216,7 @@ _ssltest () {
 	[ $TEST_CENTOS4 = 1 ] && _search_centos_version $URL 4 9 4
 	[ $TEST_CENTOS5 = 1 ] && _search_centos_version $URL 5 11 2
 	[ $TEST_CENTOS6 = 1 ] && _search_centos_version $URL 6 8 1
+	[ $TEST_CENTOS7 = 1 ] && _search_centos_version $URL 7 0 3
 }
 
 _search_centos_version () {

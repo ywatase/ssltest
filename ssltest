@@ -216,7 +216,7 @@ _ssltest () {
 	[ $TEST_CENTOS4 = 1 ] && _search_centos_version $URL 4 9 4
 	[ $TEST_CENTOS5 = 1 ] && _search_centos_version $URL 5 11 2
 	[ $TEST_CENTOS6 = 1 ] && _search_centos_version $URL 6 8 1
-	[ $TEST_CENTOS7 = 1 ] && _search_centos_version $URL 7 0 3
+	[ $TEST_CENTOS7 = 1 ] && _search_centos_version $URL 7 3 0
 }
 
 _search_centos_version () {

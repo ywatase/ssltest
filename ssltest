@@ -6,6 +6,7 @@ TEST_CENTOS4=0
 TEST_CENTOS5=0
 TEST_CENTOS6=0
 TEST_CENTOS7=0
+TEST_CENTOS8=0
 CACHE_TIME_MINUTE=1440
 OPENSSL_FILE=/usr/bin/openssl
 NSS_FILE=/etc/pki/nssdb
@@ -22,7 +23,7 @@ QF='%{name}-%{version}-%{release}'
 
 usage () {
 	/bin/cat <<END
-usage: `basename $0` [-CcOpv4567] URL
+usage: `basename $0` [-CcOpv45678] URL
   v         : verbose mode
   p         : pull docker images
   c version : centos version (cf. 5.11, 6.7, 7.3, ...)
@@ -32,6 +33,7 @@ usage: `basename $0` [-CcOpv4567] URL
   5         : test centos5
   6         : test centos6
   7         : test centos7
+  8         : test centos8
 
 See https://github.com/ywatase/ssltest
 cf)
@@ -45,7 +47,7 @@ END
 }
 
 ssltest () {
-  while getopts '4567Cc:Opv?' opt
+  while getopts '45678Cc:Opv?' opt
   do
     case $opt in
       4) TEST_CENTOS4=1
@@ -55,6 +57,8 @@ ssltest () {
       6) TEST_CENTOS6=1
         ;;
       7) TEST_CENTOS7=1
+        ;;
+      8) TEST_CENTOS8=1
         ;;
       v) VERBOSE=1
         ;;
@@ -73,7 +77,7 @@ ssltest () {
     esac
   done
   shift `expr $OPTIND - 1`
-  if [ `expr 0 + $TEST_CENTOS4 + $TEST_CENTOS5 + $TEST_CENTOS6 + $TEST_CENTOS7` = 0 ] ; then
+  if [ `expr 0 + $TEST_CENTOS4 + $TEST_CENTOS5 + $TEST_CENTOS6 + $TEST_CENTOS7 + $TEST_CENTOS8` = 0 ] ; then
 	  TEST_CENTOS5=1
 	  TEST_CENTOS6=1
   fi
@@ -215,8 +219,9 @@ _ssltest () {
 
 	[ $TEST_CENTOS4 = 1 ] && _search_centos_version $URL 4 9 4
 	[ $TEST_CENTOS5 = 1 ] && _search_centos_version $URL 5 11 2
-	[ $TEST_CENTOS6 = 1 ] && _search_centos_version $URL 6 9 1
-	[ $TEST_CENTOS7 = 1 ] && _search_centos_version $URL 7 5 0
+	[ $TEST_CENTOS6 = 1 ] && _search_centos_version $URL 6 10 1
+	[ $TEST_CENTOS7 = 1 ] && _search_centos_version $URL 7 7 0
+	[ $TEST_CENTOS8 = 1 ] && _search_centos_version $URL 8 1 0
 }
 
 _search_centos_version () {
